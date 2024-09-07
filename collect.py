@@ -32,21 +32,25 @@ def collect():
     resolver.timeout = 2
     resolver.lifetime = 2
 
+    ip_set = set()  # Use a set to keep track of unique IPs
+
     for provider in providers:
         # IPv4
         try:
             ipv4_result = resolver.resolve(provider, "A")
             for ipv4 in ipv4_result:
                 ip = ipv4.to_text()
-                prev = next((el for el in existing_ips["ipv4"] if el["ip"] == ip), None)
-                created_at = prev["created_at"] if prev else int(time.time())
-                last_update = created_at if created_at > last_update else last_update
-                result["ipv4"].append({
-                    "ip": ip,
-                    "operator": providers[provider],
-                    "provider": '.'.join(provider.split('.')[1:]),
-                    "created_at": created_at
-                })
+                if ip not in ip_set:  # Only process if it's a new IP
+                    ip_set.add(ip)  # Add to set of unique IPs
+                    prev = next((el for el in existing_ips["ipv4"] if el["ip"] == ip), None)
+                    created_at = prev["created_at"] if prev else int(time.time())
+                    last_update = created_at if created_at > last_update else last_update
+                    result["ipv4"].append({
+                        "ip": ip,
+                        "operator": providers[provider],
+                        "provider": '.'.join(provider.split('.')[1:]),
+                        "created_at": created_at
+                    })
         except:
             pass
 
@@ -56,7 +60,7 @@ def collect():
     result["ipv4"].sort(key=lambda el: el["created_at"], reverse=True)
     result["ipv4"].sort(key=lambda el: el["operator"])
     return result
-
+    
 class IP:
     def __init__(self, ip, operator, provider, created_at):
         self.ip = ip
