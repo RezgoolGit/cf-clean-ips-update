@@ -4,75 +4,68 @@ import dns
 import dns.resolver
 from datetime import datetime
 
-def collect_dns_records(providers):
-    """
-    Collect DNS records for the given providers.
-    """
-    result = set()  # Use a set to store unique IPs
+def main():
+    result = collect()
+
+    with open('list.json', 'w') as json_file:
+        json_file.write(json.dumps(result, indent=4))
+
+    with open('list.txt', 'w') as text_file:
+        text_file.write(f"Last Update: {result['last_update']}\n\nIPv4:\n")
+        for el in result["ipv4"]:
+            text_file.write(f"  - {el['ip']:15s}    {el['operator']:5s}    {el['provider']}    {el['created_at']}\n")
+
+
+def collect():
+    result = {
+        "last_update": "",
+        "last_timestamp": 0,
+        "ipv4": [],
+        "ipv6": []
+    }
+
+    providers = json.load(open('providers.json'))
+    existing_ips = json.load(open('list.json'))
+    last_update = 0
+
     resolver = dns.resolver.Resolver()
     resolver.timeout = 2
     resolver.lifetime = 2
 
     for provider in providers:
+        # IPv4
         try:
             ipv4_result = resolver.resolve(provider, "A")
             for ipv4 in ipv4_result:
                 ip = ipv4.to_text()
-                result.add(ip)  # Add IP to the set
-        except dns.resolver.NoAnswer:
-            pass
-        except dns.resolver.NXDOMAIN:
+                prev = next((el for el in existing_ips["ipv4"] if el["ip"] == ip), None)
+                created_at = prev["created_at"] if prev else int(time.time())
+                last_update = created_at if created_at > last_update else last_update
+                result["ipv4"].append({
+                    "ip": ip,
+                    "operator": providers[provider],
+                    "provider": '.'.join(provider.split('.')[1:]),
+                    "created_at": created_at
+                })
+        except:
             pass
 
+    result["last_update"] = datetime.fromtimestamp(last_update).__str__()
+    result["last_timestamp"] = last_update
+
+    result["ipv4"].sort(key=lambda el: el["created_at"], reverse=True)
+    result["ipv4"].sort(key=lambda el: el["operator"])
     return result
 
-def load_existing_ips(filename):
-    """
-    Load existing IPs from a JSON file.
-    """
-    try:
-        with open(filename, 'r') as json_file:
-            existing_ips = json.load(json_file)
-            return existing_ips["ipv4"]
-    except FileNotFoundError:
-        return []
-
-def save_ips(filename, ips):
-    """
-    Save IPs to a JSON file.
-    """
-    with open(filename, 'w') as json_file:
-        json_file.write(json.dumps({"ipv4": ips}, indent=4))
-
-def main():
-    providers = json.load(open('providers.json'))
-    providers = {k: v for k, v in providers.items() if v is not None}  # Remove providers with no value
-    existing_ips = load_existing_ips('list.json')
-    new_ips = collect_dns_records(providers.keys())
-
-    # Remove existing IPs from the new list
-    new_ips = [ip for ip in new_ips if ip not in [e['ip'] for e in existing_ips]]
-
-    # Create a list of dictionaries with IP, operator, provider, and created_at
-    new_ips_list = []
-    for ip in new_ips:
-        for provider, operator in providers.items():
-            if ip in [i for i in dns.resolver.resolve(provider, 'A')]:
-                new_ips_list.append({
-                    "ip": ip,
-                    "operator": operator,
-                    "provider": '.'.join(provider.split('.')[1:]),
-                    "created_at": int(time.time())
-                })
-
-    # Save the new IPs to the JSON file
-    save_ips('list.json', new_ips_list)
-
-    # Save the new IPs to the text file
-    with open('list.txt', 'w') as text_file:
-        text_file.write(f"Last Update: {datetime.now().__str__()}\n\nIPv4:\n")
-        for el in new_ips_list:
-            text_file.write(f"  - {el['ip']:15s}    {el['operator']:5s}    {el['provider']}    {el['created_at']}\n")
+class IP:
+    def __init__(self, ip, operator, provider, created_at):
+        self.ip = ip
+        self.operator = operator
+        self.provider = provider
+        self.created_at = created_at
+        
+    def __repr__(self):
+        return self.toJson()
 
 if __name__ == '__main__':
     main()
